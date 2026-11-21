@@ -1,6 +1,7 @@
 const pool = require('../db');
 const { CAPACITY_HOURS } = require('../config');
 const { toPositiveInt, parsePagination } = require('../utils/query');
+const { UNDER_PCT, OVER_PCT } = require('../utils/workloadOverview');
 
 const COLUMNS = ['id', 'name', 'age', 'experience_years', 'education_level', 'department', 'skill_level',
   'technical_skill_score', 'communication_score', 'leadership_score', 'problem_solving_score',
@@ -28,9 +29,9 @@ function withCapacity(row) {
   };
 }
 
-// GET /employees?page=1&limit=10&search=...&department=...
+// GET /employees?page=1&limit=10&search=...&department=...&level=under|balanced|over
 async function listEmployees(req, res) {
-  const { search, department } = req.query;
+  const { search, department, level } = req.query;
 
   const pg = parsePagination(req.query);
   if (pg.error) return res.status(400).json({ error: pg.error });
@@ -53,11 +54,19 @@ async function listEmployees(req, res) {
     params.push(department.trim());
     conditions.push(`LOWER(e.department) = LOWER($${params.length})`);
   }
+  // level = tingkat beban kerja, sama dengan badge di web: under < 70%, over > 110%, balanced di antaranya.
+  if (level !== undefined && level !== '') {
+    const pct = `(COALESCE(w.total_workload_hours, 0) * 100.0 / ${Number(CAPACITY_HOURS)})`;
+    if (level === 'under') conditions.push(`${pct} < ${UNDER_PCT}`);
+    else if (level === 'over') conditions.push(`${pct} > ${OVER_PCT}`);
+    else if (level === 'balanced') conditions.push(`${pct} BETWEEN ${UNDER_PCT} AND ${OVER_PCT}`);
+    else return res.status(400).json({ error: 'Parameter level harus under, balanced, atau over.' });
+  }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
   try {
-    const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM employees e ${where}`, params);
+    const countResult = await pool.query(`SELECT COUNT(*)::int AS total FROM employees e ${WORKLOAD_JOIN} ${where}`, params);
     const total = countResult.rows[0].total;
 
     const dataParams = [...params, limit, (page - 1) * limit];

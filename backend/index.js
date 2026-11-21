@@ -5,6 +5,7 @@ const employeesRoutes = require('./routes/employees');
 const tasksRoutes = require('./routes/tasks');
 const validationRoutes = require('./routes/validation');
 const analysisRoutes = require('./routes/analysis');
+const allocationsRoutes = require('./routes/allocations');
 const { authenticate, authorize } = require('./middleware/auth');
 
 // .env sudah terbaca saat db.js dimuat (lewat routes di atas), jadi aman dicek di sini.
@@ -32,6 +33,8 @@ app.use('/tasks', authenticate, authorize('HR', 'PM'), tasksRoutes);
 app.use('/validation', authenticate, authorize('HR'), validationRoutes);
 // Analisis alokasi hanya untuk HR (UC-06).
 app.use('/analysis', authenticate, authorize('HR'), analysisRoutes);
+// Ringkasan status, antrean review, dan keputusan reassignment hanya untuk HR.
+app.use('/allocations', authenticate, authorize('HR'), allocationsRoutes);
 
 // Alamat yang tidak ada
 app.use((req, res) => {

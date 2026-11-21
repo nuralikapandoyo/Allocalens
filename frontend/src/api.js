@@ -10,6 +10,12 @@ export function setToken(newToken) {
   token = newToken;
 }
 
+// Dipanggil kalau server membalas 401 saat sudah login (token kedaluwarsa), supaya UI kembali ke halaman login.
+let onUnauthorized = null;
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn;
+}
+
 // Ubah objek { page: 1, limit: 10 } menjadi teks "?page=1&limit=10". Nilai kosong dilewati.
 function toQuery(params = {}) {
   const q = new URLSearchParams();
@@ -42,6 +48,8 @@ async function request(path, { method = 'GET', body } = {}) {
     data = null;
   }
 
+  if (res.status === 401 && token && onUnauthorized) onUnauthorized();
+
   if (!res.ok) {
     let message = (data && data.error) || `Permintaan gagal (kode ${res.status}).`;
     // Kalau ada rincian per field (data tidak valid), gabungkan supaya kelihatan field mana yang salah.
@@ -70,4 +78,19 @@ export const api = {
 
   runAnalysis: (allocationId) => request('/analysis/run', { method: 'POST', body: { allocation_id: allocationId } }),
   getAnalysis: (allocationId) => request(`/analysis/${allocationId}`),
+
+  // Kandidat dan penugasan task (PM dan HR)
+  taskCandidates: (id, limit) => request(`/tasks/${id}/candidates${toQuery({ limit })}`),
+  compareCandidates: (taskId, employeeIds) => request(`/tasks/${taskId}/compare${toQuery({ employee_ids: employeeIds.join(',') })}`),
+  assignTask: (taskId, employeeId) => request(`/tasks/${taskId}/assign`, { method: 'POST', body: { employee_id: employeeId } }),
+
+  // Ringkasan beban kerja untuk halaman Allocation Analysis (HR)
+  workloadOverview: () => request('/analysis/overview'),
+
+  // Status alokasi, antrean review, dan keputusan reassignment (HR)
+  allocationSummary: () => request('/allocations/summary'),
+  flaggedAllocations: (params) => request(`/allocations/flagged${toQuery(params)}`),
+  allocationDecisions: (params) => request(`/allocations/decisions${toQuery(params)}`),
+  reassignAllocation: (id, employeeId) => request(`/allocations/${id}/reassign`, { method: 'POST', body: { employee_id: employeeId } }),
+  keepAllocation: (id) => request(`/allocations/${id}/keep`, { method: 'POST', body: {} }),
 };

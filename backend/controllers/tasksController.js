@@ -5,6 +5,9 @@ const { ENUMS, TASK_RULES, validateTask, validateTaskText } = require('../utils/
 const COLUMNS = `id, source_task_id, task_name, description, task_complexity, required_skill_level,
   deadline_days, workload_hours, task_priority, team_size, created_by`;
 
+// Assignee task (null kalau belum ada baris di tabel allocations). Dipakai halaman Tasks dan Candidates.
+const ASSIGNED = `(SELECT a.employee_id FROM allocations a WHERE a.task_id = tasks.id ORDER BY a.id LIMIT 1) AS assigned_employee_id`;
+
 // nama query -> kolom database
 const ENUM_FILTERS = {
   priority: 'task_priority',
@@ -45,6 +48,15 @@ async function listTasks(req, res) {
     conditions.push(`${column} = $${params.length}`);
   }
 
+  // assigned=no -> task yang belum punya assignee, assigned=yes -> sudah punya
+  const { assigned } = req.query;
+  if (assigned !== undefined && assigned !== '') {
+    if (!['yes', 'no'].includes(assigned)) {
+      return res.status(400).json({ error: 'Parameter assigned harus yes atau no.' });
+    }
+    conditions.push(`${assigned === 'no' ? 'NOT ' : ''}EXISTS (SELECT 1 FROM allocations a WHERE a.task_id = tasks.id)`);
+  }
+
   const { search } = req.query;
   if (typeof search === 'string' && search.trim() !== '') {
     params.push(`%${search.trim()}%`);
@@ -61,7 +73,7 @@ async function listTasks(req, res) {
     const total = countResult.rows[0].total;
 
     const dataResult = await pool.query(
-      `SELECT ${COLUMNS} FROM tasks ${where}
+      `SELECT ${COLUMNS}, ${ASSIGNED} FROM tasks ${where}
       ORDER BY id ${direction}
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, (page - 1) * limit]
@@ -82,7 +94,7 @@ async function getTask(req, res) {
   }
 
   try {
-    const result = await pool.query(`SELECT ${COLUMNS} FROM tasks WHERE id = $1`, [id]);
+    const result = await pool.query(`SELECT ${COLUMNS}, ${ASSIGNED} FROM tasks WHERE id = $1`, [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: `Task dengan id ${id} tidak ditemukan.` });
     }
